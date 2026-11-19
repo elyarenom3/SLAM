@@ -123,4 +123,3 @@ Everything the estimators need on real data is fitted on dataset 1 by `scripts/f
 - The five robots are the same in every dataset, so the holdout is over sessions.
 - Filter covariances are filtered and graph covariances are smoothed; the final pose gives the like-for-like comparison.
 - In simulation with accurate bearings the standard EKF is close to consistent, and under strong nonlinearity (2 m sensing range with high turn-rate noise) FEJ diverged at two of twelve swept configurations.
-- The paper's author block is a placeholder.
