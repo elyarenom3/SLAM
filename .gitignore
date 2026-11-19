@@ -15,3 +15,5 @@ paper/*.fls
 paper/*.fdb_latexmk
 paper/*.synctex.gz
 .DS_Store
+data/g2o/
+paper/build.log

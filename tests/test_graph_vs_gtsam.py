@@ -19,9 +19,9 @@ def case():
 
 def test_installed_gtsam_convention_is_known():
     assert CONVENTION in (gr.GRISETTI, gr.SE2LOG)
-    major_minor = tuple(int(v) for v in gtsam.__version__.split(".")[:2]) if hasattr(gtsam, "__version__") else None
-    if major_minor is not None:
-        assert CONVENTION == (gr.SE2LOG if major_minor >= (4, 3) else gr.GRISETTI)
+    from importlib.metadata import version
+    major_minor = tuple(int(v) for v in version("gtsam").split(".")[:2])
+    assert CONVENTION == (gr.SE2LOG if major_minor >= (4, 3) else gr.GRISETTI)
 
 
 def test_factor_residuals_match_gtsam_at_random_values(case):
@@ -41,6 +41,9 @@ def test_factor_residuals_match_gtsam_at_random_values(case):
     assert solver.cost(Xr, Lr) == pytest.approx(2 * graph.error(values), rel=1e-10)
 
 
+EXACT_JACOBIANS = CONVENTION == gr.SE2LOG   # GTSAM 4.3 linearises its pose factors exactly, 4.2 does not
+
+
 @pytest.mark.parametrize("seed", (3, 7, 11))
 def test_optimum_cost_estimates_and_covariances_match_gtsam(seed):
     problem, _, _, X0, L0 = small_graph(seed=seed)
@@ -48,13 +51,36 @@ def test_optimum_cost_estimates_and_covariances_match_gtsam(seed):
     own = solver.optimise(X0, L0, method="lm", tol=1e-11, max_iter=200)
     ref = gb.solve(problem, X0, L0, method="lm+gn", tol=1e-14, max_iter=200)
     assert own["converged"]
-    assert own["cost"] == pytest.approx(ref["cost"], rel=1e-8)
-    assert np.abs(own["X"][:, :2] - ref["X"][:, :2]).max() < 1e-7
-    assert np.abs(gr.wrap(own["X"][:, 2] - ref["X"][:, 2])).max() < 1e-7
-    assert np.abs(own["L"] - ref["L"]).max() < 1e-7
     Pp, Pl = solver.marginals(own["X"], own["L"])
-    assert np.allclose(Pp, ref["P_pose"], rtol=1e-5, atol=1e-12)     # after rotating GTSAM's into the world frame
-    assert np.allclose(Pl, ref["P_lm"], rtol=1e-5, atol=1e-12)
+    # the two cost functions are the same function: evaluate GTSAM's at the own optimum
+    graph, values, _, _ = gb.build(problem, own["X"], own["L"])
+    assert own["cost"] == pytest.approx(2 * graph.error(values), rel=1e-11)
+    if EXACT_JACOBIANS:
+        assert own["cost"] == pytest.approx(ref["cost"], rel=1e-8)
+        assert np.abs(own["X"][:, :2] - ref["X"][:, :2]).max() < 1e-7
+        assert np.abs(gr.wrap(own["X"][:, 2] - ref["X"][:, 2])).max() < 1e-7
+        assert np.abs(own["L"] - ref["L"]).max() < 1e-7
+        assert np.allclose(Pp, ref["P_pose"], rtol=1e-5, atol=1e-12)   # GTSAM's rotated into the world frame
+        assert np.allclose(Pl, ref["P_lm"], rtol=1e-5, atol=1e-12)
+    else:
+        # GTSAM 4.2 drops the chart Jacobian of its between and prior factors, so its
+        # iteration stops at a point of slightly higher cost; the gap is second order
+        # in the residual
+        assert own["cost"] <= ref["cost"] * (1 + 1e-12)
+        assert (ref["cost"] - own["cost"]) / own["cost"] < 1e-3
+        assert np.abs(own["X"][:, :2] - ref["X"][:, :2]).max() < 1e-2
+        assert np.abs(Pp - ref["P_pose"]).max() / np.abs(Pp).max() < 5e-2
+
+
+def test_agreement_tightens_as_residuals_shrink():
+    """With ten times less noise the remaining gap to GTSAM shrinks (to zero for 4.3)."""
+    gaps = []
+    for noise in (1.0, 0.1):
+        problem, _, _, X0, L0 = small_graph(seed=7, noise=noise)
+        own = gr.GraphSLAM(problem, CONVENTION).optimise(X0, L0, tol=1e-11)
+        ref = gb.solve(problem, X0, L0, method="lm+gn", tol=1e-14, with_marginals=False)
+        gaps.append(np.abs(own["X"][:, :2] - ref["X"][:, :2]).max())
+    assert gaps[1] < 1e-7 if EXACT_JACOBIANS else gaps[1] < 0.05 * gaps[0]
 
 
 def test_gtsam_levenberg_marquardt_reaches_the_same_optimum(case):
@@ -62,8 +88,8 @@ def test_gtsam_levenberg_marquardt_reaches_the_same_optimum(case):
     solver = gr.GraphSLAM(problem, CONVENTION)
     own = solver.optimise(X0, L0, tol=1e-11)
     ref = gb.solve(problem, X0, L0, method="lm", tol=1e-14, with_marginals=False)
-    assert own["cost"] == pytest.approx(ref["cost"], rel=1e-6)
-    assert np.abs(own["X"][:, :2] - ref["X"][:, :2]).max() < 1e-4
+    assert own["cost"] == pytest.approx(ref["cost"], rel=1e-6 if EXACT_JACOBIANS else 1e-3)
+    assert np.abs(own["X"][:, :2] - ref["X"][:, :2]).max() < (1e-4 if EXACT_JACOBIANS else 1e-2)
 
 
 def test_other_convention_differs_only_at_second_order(case):
