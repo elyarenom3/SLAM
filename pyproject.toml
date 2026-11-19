@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slam2d"
+version = "0.1.0"
+description = "EKF-SLAM (standard and FEJ) and graph-SLAM on UTIAS MR.CLAM, checked against GTSAM"
+requires-python = ">=3.11"
+dependencies = ["numpy", "scipy", "matplotlib", "tqdm"]
+
+[project.optional-dependencies]
+full = ["gtsam", "pytest", "imageio-ffmpeg"]
+
+[tool.setuptools.packages.find]
+include = ["slam2d*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
