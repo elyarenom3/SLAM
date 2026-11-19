@@ -1,5 +1,7 @@
 # slam2d: EKF-SLAM, FEJ-EKF and graph-SLAM on UTIAS MR.CLAM
 
+This is a personal hobby project by Elya Renom. It is not coursework.
+
 Two planar SLAM estimators built from scratch and run on the same real dataset with ground truth:
 
 - an EKF-SLAM with standard, First-Estimates-Jacobian (FEJ) and ideal Jacobians on one code path;
